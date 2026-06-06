@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "podinfo.fullname" . }}
+  labels:
+    {{- include "podinfo.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+
+  selector:
+    matchLabels:
+      app: {{ include "podinfo.name" . }}
+
+  template:
+    metadata:
+      labels:
+        app: {{ include "podinfo.name" . }}
+        {{- include "podinfo.selectorLabels" . | nindent 8 }}
+
+    spec:
+      containers:
+        - name: podinfo
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          ports:
+            - containerPort: {{ .Values.service.targetPort }}
+
+          env:
+            - name: PODINFO_UI_COLOR
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "podinfo.fullname" . }}-config
+                  key: PODINFO_UI_COLOR
+
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: 10
+            periodSeconds: 20

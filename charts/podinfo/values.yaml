@@ -1,0 +1,28 @@
+replicaCount: 2
+
+image:
+  repository: stefanprodan/podinfo
+  tag: "6.13.0"
+  pullPolicy: IfNotPresent
+
+config:
+  uiColor: "#34577c"
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 9898
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70

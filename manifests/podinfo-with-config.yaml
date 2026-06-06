@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-config
+  namespace: podinfo
+data:
+  PODINFO_UI_COLOR: "#34577c"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: podinfo
+
+  template:
+    metadata:
+      labels:
+        app: podinfo
+
+    spec:
+      containers:
+        - name: podinfo
+          image: stefanprodan/podinfo:6.13.0
+
+          ports:
+            - containerPort: 9898
+
+          env:
+            - name: PODINFO_UI_COLOR
+              valueFrom:
+                configMapKeyRef:
+                  name: podinfo-config
+                  key: PODINFO_UI_COLOR
+          
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9898
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9898
+            initialDelaySeconds: 10
+            periodSeconds: 20
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  type: ClusterIP
+
+  selector:
+    app: podinfo
+
+  ports:
+    - port: 80
+      targetPort: 9898
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  scaleTargetRef:t
+    apiVersion: apps/v1
+    kind: Deployment
+    name: podinfo
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
