@@ -1,0 +1,49 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+
+metadata:
+  name: podinfo-alerts
+  labels:
+    release: monitoring
+
+spec:
+  groups:
+    - name: podinfo.rules
+      rules:
+        - alert: PodinfoUnavailable
+          expr: up{job="podinfo"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Podinfo is unavailable"
+            description: "Prometheus has not been able to scrape podinfo for more than 2 minutes."
+
+        - alert: PodinfoHighErrorBudgetBurn
+          expr: |
+            (
+              sum(rate(http_requests_total{job="podinfo",status=~"5.."}[5m]))
+              /
+              sum(rate(http_requests_total{job="podinfo"}[5m]))
+            ) > 0.0144
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Podinfo is burning error budget too quickly"
+            description: "5xx error rate is above the 14.4x burn-rate threshold for a 99.9% availability SLO."
+
+        - alert: PodinfoHighLatency
+          expr: |
+            histogram_quantile(
+              0.99,
+              sum(
+                rate(http_request_duration_seconds_bucket{job="podinfo"}[5m])
+              ) by (le)
+            ) > 0.2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Podinfo p99 latency is too high"
+            description: "p99 latency has exceeded 200ms for more than 5 minutes."
