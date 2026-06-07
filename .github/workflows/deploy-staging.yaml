@@ -20,5 +20,5 @@ jobs:
           helm upgrade --install podinfo charts/podinfo \
             --namespace podinfo-staging \
             --create-namespace \
-            --dry-run \
+            --dry-run=client \
             --debug
