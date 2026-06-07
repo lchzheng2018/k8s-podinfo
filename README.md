@@ -154,23 +154,23 @@ The main files are:
 - `templates/hpa.yaml`  
   Defines the HorizontalPodAutoscaler. It uses the min/max replica count and CPU utilization target from the values file.
 
-The values files provide the configuration, and the templates render the Kubernetes resources. For a normal deployment:
+For a normal deployment, the chart uses the default configuration from `values.yaml`. The deployment can be done with:
 
 ```bash
 ./scripts/deploy-podinfo.sh
 ```
 
-For a production-style deployment using `values-prod.yaml`:
+For a production-style deployment, the chart uses overrides from `values-prod.yaml`. The deployment can be done with:
 
 ```bash
 ./scripts/deploy-podinfo-prod.sh
 ```
 
-The deployment scripts also wait for rollout completion and print the main resources after deployment, which makes manual verification easier.
+The deployment scripts also wait for rollout completion and print the main Kubernetes resources after deployment for easier verification.
 
 ---
 
-## CI/CD Pipeline
+### CI/CD Pipeline
 
 GitHub Actions workflows are located under:
 
@@ -179,13 +179,19 @@ GitHub Actions workflows are located under:
 ```
 
 The pipeline performs:
-- `helm lint`
-- `helm template`
+- Helm lint validation
+- rendered manifest validation
 - simulated staging deployment
 - manual approval before production deployment
 - rollback handling for failed production deployment
 
-### Helm Validation
+### Helm Validation (CI)
+
+Workflow file:
+
+```text
+.github/workflows/helm-ci.yaml
+```
 
 Every push triggers:
 
@@ -197,25 +203,55 @@ helm template podinfo charts/podinfo
 
 to validate both the chart structure and rendered manifests.
 
+The validation workflow status can be checked in the GitHub repository Actions tab.
+
 ### Staging Deployment
+
+Workflow file:
+
+```text
+.github/workflows/deploy-staging.yaml
+```
 
 The staging workflow uses a temporary `kind` cluster created during the GitHub Actions run. This allows the workflow to simulate:
 
 ```bash
-helm upgrade --install
+helm upgrade --install podinfo charts/podinfo \
+  --namespace podinfo-staging \
+  --create-namespace \
+  --dry-run=client \
+  --debug
 ```
 
 without requiring a long-running Kubernetes cluster.
 
+The staging deployment status can also be checked in the GitHub repository Actions tab.
+
 ### Production Deployment
 
+Workflow file:
+
+```text
+.github/workflows/deploy-prod.yaml
+```
+
 Production deployment uses GitHub Environments with required reviewer approval configured in the repository settings.
+
+Before the workflow can be used, the `production` GitHub Environment must be created manually in the repository settings with required reviewer approval enabled.
 
 Rollback handling is implemented with:
 
 ```bash
-helm rollback podinfo
+helm upgrade --install podinfo charts/podinfo \
+  --namespace podinfo-prod \
+  --create-namespace \
+  -f charts/podinfo/values-prod.yaml \
+  --rollback-on-failure \
+  --wait \
+  --timeout 5m
 ```
+
+The production deployment workflow status can be checked in the GitHub repository Actions tab.
 
 In a real production setup, secure kubeconfig handling and cluster credentials would be required.
 
