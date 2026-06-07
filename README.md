@@ -681,3 +681,54 @@ I would trigger a scaling review if I started seeing trends such as:
 - rising error rates during peak traffic
 
 I would also periodically load test the service to validate the assumptions and make sure the scaling behavior still matched the real traffic patterns as usage continued to grow.
+
+### Prompt 3: Architecture Trade-offs
+
+**Question:**  
+*You need to extend this deployment to run in two regions (e.g. us-west and us-east) with active-active traffic. Describe the key infrastructure decisions you would need to make: how would you handle data consistency, route traffic between regions, manage deployments across both, and detect a regional failure? What would you do differently compared to a single-region setup, and what trade-offs would you accept?*
+
+#### How would you handle data consistency?
+
+For an active-active two-region setup, I would first separate the stateless application layer from any stateful dependency. The podinfo application itself is mostly stateless, so running replicas in both `us-west` and `us-east` is straightforward. The harder part is deciding how shared state, configuration, monitoring data, and downstream dependencies should behave across regions.
+
+For stateful dependencies, I would first decide whether the system can tolerate eventual consistency or requires stronger consistency. If eventual consistency is acceptable, I would prefer regional writes with asynchronous replication because it keeps latency lower and allows each region to operate more independently. If strong consistency is required, the design becomes more expensive and fragile because cross-region writes add latency and can reduce availability during network partitions.
+
+I would also compare data and service behavior across regions. For example, I would check whether key service metrics such as request rate, error rate, latency, and success rate are consistent between `us-west` and `us-east`. For higher confidence, we could run controlled traffic splitting or A/B-style comparison between regions before fully shifting traffic.
+
+#### How would you route traffic between regions?
+
+I would use global load balancing or DNS-based routing to send users to the closest healthy region. The routing policy should support health checks and failover. If one region becomes unhealthy, traffic can be shifted to the other region.
+
+Before shifting traffic back, I would make sure the recovered region is healthy again and that both regions have enough capacity to safely handle the traffic.
+
+#### How would you manage deployments across both regions?
+
+I would not roll out to both regions blindly at the same time. I would deploy to one region first, verify health metrics, error rate, latency, and service behavior, and then continue to the second region.
+
+The same Helm chart can still be used, but I would keep region-specific values files for differences such as replica count, resource sizing, ingress configuration, and regional endpoints.
+
+#### How would you detect a regional failure?
+
+Failure detection needs to happen at multiple levels:
+- pod health
+- service metrics
+- regional ingress/load balancer health
+- end-to-end synthetic checks from outside the cluster
+
+A region should not be considered healthy just because Kubernetes pods are running. I would want alerts on:
+- regional traffic drop
+- elevated 5xx rate
+- high latency
+- failed synthetic probes
+- inability to scrape metrics from one region
+
+#### What would you do differently compared to a single-region setup, and what trade-offs would you accept?
+
+Compared with a single-region setup, the main trade-offs are:
+
+- better availability, but more operational complexity
+- faster regional failover, but higher infrastructure cost
+- lower latency with regional serving, but harder data consistency
+- safer deployments with staged regional rollout, but slower release speed
+- better failure isolation, but more monitoring and alerting work
+- eventual consistency where possible, but more careful product behavior design
