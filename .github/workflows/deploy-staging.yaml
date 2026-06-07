@@ -13,12 +13,26 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
       - uses: azure/setup-helm@v4
 
-      - name: Simulate staging helm upgrade install
+      - uses: azure/setup-kubectl@v4
+
+      - name: Create staging Kubernetes cluster
+        uses: helm/kind-action@v1
+
+      - name: Verify staging cluster
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Deploy to staging
         run: |
           helm upgrade --install podinfo charts/podinfo \
             --namespace podinfo-staging \
-            --create-namespace \
-            --dry-run=client \
-            --debug
+            --create-namespace
+
+      - name: Verify staging deployment
+        run: |
+          kubectl get all -n podinfo-staging
+          helm status podinfo -n podinfo-staging
