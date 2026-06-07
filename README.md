@@ -50,8 +50,10 @@ The goal of the project was not only to deploy the application, but also to demo
 │   └── servicemonitor.yaml
 │
 ├── scripts/
+│   ├── setup-cluster.sh
 │   ├── setup-cluster.ps1
-│   └── setup-cluster.sh
+│   ├── deploy-podinfo.sh
+│   └── deploy-podinfo-prod.sh
 │
 └── README.md
 ```
@@ -432,51 +434,112 @@ For a 99.9% availability SLO, the allowed error budget is 0.1%. The burn-rate al
 
 ## SLO / SLI / Error Budget
 
-The following SLOs were defined for the service:
+For this assignment, I defined two basic SLOs for podinfo:
 
-- 99.9% availability
-- p99 latency below 200ms
+- Availability SLO: 99.9%
+- Latency SLO: p99 latency < 200ms
 
-Example SLI queries:
+### Availability SLI
 
-Availability:
+The request-based availability SLI is calculated as the ratio of successful requests over total requests:
+
+```promql
+1 - (
+  sum(rate(http_requests_total{job="podinfo",status=~"5.."}[5m]))
+  /
+  sum(rate(http_requests_total{job="podinfo"}[5m]))
+)
+```
+
+I also use the Prometheus `up` metric as a simpler service availability signal:
 
 ```promql
 up{job="podinfo"}
 ```
 
-Error rate:
+### Latency SLI
 
-```promql
-rate(http_requests_total{status=~"5.."}[5m])
-```
-
-Latency:
+The latency SLI uses p99 request latency:
 
 ```promql
 histogram_quantile(
   0.99,
-  sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+  sum(rate(http_request_duration_seconds_bucket{job="podinfo"}[5m])) by (le)
 )
 ```
 
-A 99.9% availability SLO allows a 0.1% error budget.
+The alert threshold is 200ms, which matches the latency SLO.
 
-Burn-rate alerts were added to detect excessive error budget consumption over short time windows.
+### Error Budget
 
+For a 99.9% availability SLO, the allowed failure budget is:
+
+```text
+100% - 99.9% = 0.1%
+```
+
+So over a 30-day window, the service can be unavailable or return errors for roughly:
+
+```text
+30 days * 24 hours/day * 60 minutes/hour * 0.001 = 43.2 minutes
+```
+
+This is the monthly error budget for the availability SLO.
+
+### Burn-rate Alert
+
+The burn-rate alert is defined in:
+
+```text
+observability/prometheusrule.yaml
+```
+
+It checks whether 5xx errors are consuming the availability error budget too quickly:
+
+```promql
+(
+  sum(rate(http_requests_total{job="podinfo",status=~"5.."}[5m]))
+  /
+  sum(rate(http_requests_total{job="podinfo"}[5m]))
+) > 0.0144
+```
+
+The base error budget is `0.001` for a 99.9% SLO. The alert threshold `0.0144` means the service is burning budget at about `14.4x` the allowed rate over the short window.
+
+This is a simplified burn-rate alert for the assignment. In a real production setup, I would normally use multi-window burn-rate alerts, for example a fast page-level alert and a slower ticket-level alert.
 ---
 
 ## Deployment Instructions
 
-### Deploy podinfo
+The previous sections already describe the individual deployment and observability steps. This section collects the main commands together as a complete deployment flow.
+
+### Create Local Cluster
 
 ```bash
-helm upgrade --install podinfo charts/podinfo \
-  --namespace podinfo \
-  --create-namespace
+./scripts/setup-cluster.sh
 ```
 
-### Install Prometheus and Grafana
+or:
+
+```powershell
+.\scripts\setup-cluster.ps1
+```
+
+### Deploy podinfo
+
+For a normal deployment:
+
+```bash
+./scripts/deploy-podinfo.sh
+```
+
+For a production-style deployment:
+
+```bash
+./scripts/deploy-podinfo-prod.sh
+```
+
+### Install Observability Stack
 
 ```bash
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -495,6 +558,38 @@ kubectl apply -f observability/servicemonitor.yaml
 kubectl apply -f observability/prometheusrule.yaml
 ```
 
+### Verify Monitoring Stack
+
+Prometheus targets can be checked with:
+
+```bash
+kubectl port-forward -n monitoring svc/monitoring-kube-prometheus-prometheus 9090:9090
+```
+
+Then open:
+
+```text
+http://localhost:9090/targets
+```
+
+Grafana can be accessed with:
+
+```bash
+kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
+```
+
+Then open:
+
+```text
+http://localhost:3000
+```
+
+Import the dashboard from:
+
+```text
+observability/grafana-dashboard.json
+```
+
 ---
 
 ## Design Decisions / Tradeoffs
@@ -503,8 +598,8 @@ A few parts of the implementation were intentionally simplified for the assignme
 
 - The staging deployment uses a temporary `kind` cluster created during the GitHub Actions workflow instead of a persistent shared cluster.
 - The production deployment workflow includes approval and rollback logic, but does not connect to a real production Kubernetes cluster.
-- Alert thresholds and SLO windows are simplified examples intended to demonstrate monitoring concepts rather than production tuning.
-- The Grafana dashboard focuses on RED metrics only and does not include infrastructure-level monitoring.
+- Alert thresholds and SLO windows are simplified examples intended to demonstrate the monitoring concepts rather than production tuning.
+- The Grafana dashboard focuses mainly on the required RED metrics and does not include infrastructure-level monitoring.
 - The Helm chart keeps a relatively small set of configurable values to keep the example easier to review.
 
 The goal was to keep the implementation reasonably small while still covering deployment, CI/CD, observability, and operational concepts.
@@ -518,6 +613,6 @@ Given more time, a few areas could be expanded further:
 - Separate Helm values files for additional environments beyond production.
 - More realistic deployment validation tests in the CI pipeline.
 - Alertmanager integration for notifications instead of local alert rules only.
-- Persistent Grafana dashboards and storage configuration.
+- Additional Grafana dashboards for infrastructure and Kubernetes-level monitoring.
 - Additional application metrics and dashboards beyond the RED model.
 - More advanced SLO burn-rate windows and multi-window alerting strategies.
