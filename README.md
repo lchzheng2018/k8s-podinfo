@@ -1,3 +1,61 @@
+
+# Podinfo Kubernetes Deployment and Observability Demo
+
+## Overview
+
+This repository contains a Kubernetes deployment setup for `podinfo` using both raw Kubernetes manifests and a reusable Helm chart.
+
+It also includes:
+- local Kubernetes cluster setup scripts
+- GitHub Actions CI/CD workflows
+- Prometheus and Grafana observability setup with RED metrics dashboard, alert rules, and basic SLO/error budget monitoring
+
+The goal of the project was not only to deploy the application, but also to demonstrate operational concepts such as:
+- configuration management
+- deployment validation
+- monitoring and alerting
+- deployment automation
+- SLO/error budget monitoring
+
+---
+
+## Repository Structure
+
+```text
+.
+├── .github/workflows/
+│   ├── helm-ci.yaml
+│   ├── deploy-staging.yaml
+│   └── deploy-prod.yaml
+│
+├── charts/podinfo/
+│   ├── templates/
+│   │   ├── _helpers.tpl
+│   │   ├── configmap.yaml
+│   │   ├── deployment.yaml
+│   │   ├── hpa.yaml
+│   │   └── service.yaml
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   └── values-prod.yaml
+│
+├── manifests/
+│   ├── podinfo-basic.yaml
+│   └── podinfo-with-config.yaml
+│
+├── observability/
+│   ├── grafana-dashboard.json
+│   ├── prometheus-values.yaml
+│   ├── prometheusrule.yaml
+│   └── servicemonitor.yaml
+│
+├── scripts/
+│   ├── setup-cluster.ps1
+│   └── setup-cluster.sh
+│
+└── README.md
+```
+
 ## Architecture Overview
 
 The local Kubernetes cluster can be created using either:
@@ -43,64 +101,6 @@ The observability stack includes:
 
 ---
 
-## Repository Structure
-
-```text
-.
-├── .github/workflows/
-│   ├── helm-ci.yaml
-│   ├── deploy-staging.yaml
-│   └── deploy-prod.yaml
-│
-├── charts/podinfo/
-│   ├── templates/
-│   │   ├── _helpers.tpl
-│   │   ├── configmap.yaml
-│   │   ├── deployment.yaml
-│   │   ├── hpa.yaml
-│   │   └── service.yaml
-│   ├── Chart.yaml
-│   ├── values.yaml
-│   └── values-prod.yaml
-│
-├── manifests/
-│   ├── podinfo-basic.yaml
-│   └── podinfo-with-config.yaml
-│
-├── observability/
-│   ├── grafana-dashboard.json
-│   ├── prometheus-values.yaml
-│   ├── prometheusrule.yaml
-│   └── servicemonitor.yaml
-│
-├── scripts/
-│   ├── setup-cluster.ps1
-│   └── setup-cluster.sh
-│
-└── README.md
-```
-
----
-
-## Architecture Overview
-
-The deployment consists of:
-- Kubernetes Deployment for the podinfo application
-- ClusterIP Service for internal traffic routing
-- ConfigMap-based application configuration
-- Horizontal Pod Autoscaler (HPA)
-- Helm chart packaging for reusable deployment
-- GitHub Actions CI/CD workflows
-- Prometheus and Grafana monitoring stack
-
-The application exposes:
-- `/healthz` for liveness/readiness probes
-- `/metrics` for Prometheus scraping
-
-The observability stack uses the Prometheus Operator through the `kube-prometheus-stack` Helm chart.
-
----
-
 ## Kubernetes Manifests
 
 The `manifests/` directory contains raw Kubernetes manifests for deploying podinfo without Helm.
@@ -126,27 +126,47 @@ The deployment uses:
 
 ## Helm Chart Design
 
-The reusable Helm chart is located under:
+The Helm chart is under `charts/podinfo/`. It packages the podinfo deployment into a reusable form so it can be installed, upgraded, and tested consistently with Helm.
 
-```text
-charts/podinfo/
+The main files are:
+
+- `Chart.yaml`  
+  Defines the chart name, chart version, application version, and basic chart metadata.
+
+- `values.yaml`  
+  Contains the default configuration used by the templates. This includes the image, replica count, service port, resource requests/limits, HPA settings, and UI color configuration.
+
+- `values-prod.yaml`  
+  Provides production-style overrides. The production deployment script and production workflow use this file to show how the same chart can be deployed with different environment settings.
+
+- `templates/_helpers.tpl`  
+  Contains reusable helpers for names and labels. This keeps the labels consistent across the Deployment, Service, ConfigMap, and HPA templates.
+
+- `templates/deployment.yaml`  
+  Defines the podinfo Deployment. It uses values from `values.yaml` for the image, replica count, resource requests/limits, health probes, and ConfigMap-based environment variable.
+
+- `templates/service.yaml`  
+  Defines the ClusterIP Service for podinfo. The service exposes port `80` and forwards traffic to the podinfo container on port `9898`. The service port is named `http` so the Prometheus `ServiceMonitor` can reference it.
+
+- `templates/configmap.yaml`  
+  Defines application configuration used by podinfo. In this project it is used for the UI color setting.
+
+- `templates/hpa.yaml`  
+  Defines the HorizontalPodAutoscaler. It uses the min/max replica count and CPU utilization target from the values file.
+
+The values files provide the configuration, and the templates render the Kubernetes resources. For a normal deployment:
+
+```bash
+./scripts/deploy-podinfo.sh
 ```
 
-The chart parameterizes:
-- replica count
-- container image
-- service configuration
-- resource requests and limits
-- HPA settings
-- UI color configuration
+For a production-style deployment using `values-prod.yaml`:
 
-Environment-specific overrides can be provided through separate values files such as:
-
-```text
-values-prod.yaml
+```bash
+./scripts/deploy-podinfo-prod.sh
 ```
 
-The goal was to keep the chart relatively small while still demonstrating reusable deployment configuration.
+The deployment scripts also wait for rollout completion and print the main resources after deployment, which makes manual verification easier.
 
 ---
 

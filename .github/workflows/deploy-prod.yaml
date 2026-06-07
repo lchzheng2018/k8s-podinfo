@@ -22,7 +22,8 @@ jobs:
           helm upgrade --install podinfo charts/podinfo \
             --namespace podinfo-prod \
             --create-namespace \
-            --atomic \
+            -f charts/podinfo/values-prod.yaml \
+            --rollback-on-failure \
             --wait \
             --timeout 5m
 
