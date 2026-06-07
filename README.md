@@ -1,15 +1,45 @@
-# Kubernetes Podinfo Deployment
+## Architecture Overview
 
-## Overview
+The local Kubernetes cluster can be created using either:
 
-This repository contains a Kubernetes deployment setup for `podinfo` using both raw Kubernetes manifests and a reusable Helm chart. It also includes a basic CI/CD pipeline implemented with GitHub Actions and an observability stack based on Prometheus and Grafana.
+```bash
+./scripts/setup-cluster.sh
+```
 
-The goal of this project was not only to deploy the application, but also to demonstrate operational considerations such as:
-- configuration management
-- deployment validation
-- monitoring and alerting
-- SLO/error budget concepts
-- deployment automation
+or:
+
+```powershell
+.\scripts\setup-cluster.ps1
+```
+
+The project deploys `podinfo` into Kubernetes using both raw manifests and a reusable Helm chart.
+
+The raw manifests under `manifests/` can be used for manual deployment testing or as a simpler deployment example before using the Helm chart.
+
+The Helm chart includes:
+- Deployment
+- Service
+- ConfigMap
+- HorizontalPodAutoscaler
+
+GitHub Actions workflows are used for:
+- Helm validation
+- rendered manifest validation
+- staging deployment simulation
+- production deployment approval flow
+- rollback handling
+
+The application exposes:
+- `/healthz` for health probes
+- `/metrics` for Prometheus metrics scraping
+
+Prometheus and Grafana are deployed separately through the community `kube-prometheus-stack` chart.
+
+The observability stack includes:
+- ServiceMonitor
+- PrometheusRule alerts
+- Grafana RED metrics dashboard
+- basic SLO/error budget monitoring
 
 ---
 
