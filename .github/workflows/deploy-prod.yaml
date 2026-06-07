@@ -1,0 +1,32 @@
+name: Deploy Prod
+
+on:
+  workflow_run:
+    workflows: ["Deploy Staging"]
+    types:
+      - completed
+
+jobs:
+  prod:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+
+      - name: Deploy to prod
+        run: |
+          helm upgrade --install podinfo charts/podinfo \
+            --namespace podinfo-prod \
+            --create-namespace \
+            --atomic \
+            --wait \
+            --timeout 5m
+
+      - name: Rollback prod on failure
+        if: failure()
+        run: |
+          helm rollback podinfo --namespace podinfo-prod || true
