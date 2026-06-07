@@ -507,6 +507,7 @@ It checks whether 5xx errors are consuming the availability error budget too qui
 The base error budget is `0.001` for a 99.9% SLO. The alert threshold `0.0144` means the service is burning budget at about `14.4x` the allowed rate over the short window.
 
 This is a simplified burn-rate alert for the assignment. In a real production setup, I would normally use multi-window burn-rate alerts, for example a fast page-level alert and a slower ticket-level alert.
+
 ---
 
 ## Deployment Instructions
