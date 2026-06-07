@@ -172,7 +172,7 @@ The deployment scripts also wait for rollout completion and print the main Kuber
 
 ---
 
-### CI/CD Pipeline
+## CI/CD Pipeline
 
 GitHub Actions workflows are located under:
 
