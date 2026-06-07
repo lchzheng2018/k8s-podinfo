@@ -617,3 +617,67 @@ Given more time, a few areas could be expanded further:
 - Additional Grafana dashboards for infrastructure and Kubernetes-level monitoring.
 - Additional application metrics and dashboards beyond the RED model.
 - More advanced SLO burn-rate windows and multi-window alerting strategies.
+
+---
+## Written Responses
+
+### Prompt 1: Incident Response
+
+**Question:**  
+*It’s 2am and your alert fires — podinfo has been unreachable for 3 minutes. Walk through your investigation and remediation steps, from the moment you receive the alert to the moment the service is restored. Include how you would write up the postmortem: what sections would it contain, what questions would it seek to answer, and what follow-up actions would you drive from it?*
+
+If I received an alert that podinfo had been unreachable for more than 3 minutes, the first thing I would do is confirm whether this is a real outage or a false alert. I would check Prometheus and Grafana to see whether the podinfo target is down, whether traffic dropped to zero, and whether latency or error rate spiked before the outage. I would also check the Kubernetes resources directly to see whether the pods are healthy and whether there were recent deployment or scheduling events.
+
+At that point I would try to quickly narrow the issue down to one of a few common categories:
+
+- failed deployment
+- crashing pods
+- probe failures
+- configuration changes
+- networking/service issues
+
+If there was a recent rollout, I would immediately inspect rollout history and pod logs. If the latest deployment caused the issue, I would rollback first to restore service before spending more time on deeper root-cause analysis.
+
+After recovery, I would verify that the pods are healthy again, traffic and metrics returned to normal, and the alerts cleared correctly. I would also continue monitoring for a while to make sure the service remained stable.
+
+For the postmortem, I would document the incident timeline, root cause, customer impact, detection method, remediation steps, and follow-up actions. The main questions I would try to answer are:
+
+- what failed
+- why the failure was not prevented earlier
+- whether monitoring and alerts worked correctly
+- whether the rollout or recovery process could be improved
+
+The follow-up actions would depend on the root cause, but likely include:
+
+- improving monitoring and alert coverage
+- improving deployment validation before rollout
+- reducing recovery time through faster rollback or automated recovery mechanisms
+- improving operational visibility to detect similar failures earlier
+
+### Prompt 2: Capacity Planning
+
+**Question:**  
+*podinfo is currently handling 5,000 requests per minute with an average pod CPU utilization of 60%. Your product team projects 4x traffic growth over the next quarter. Describe how you would model and plan for this growth: what signals would you instrument, how would you forecast resource needs, what headroom would you maintain, and at what thresholds would you trigger a scaling review? You do not need to implement this — a written plan with your reasoning is sufficient.*
+
+The first thing I would do is establish a baseline for the current workload and verify whether CPU is actually the primary bottleneck. Besides CPU utilization, I would also monitor request rate, latency, error rate, memory usage, pod restart frequency, HPA behavior, and node-level resource pressure. I would especially pay attention to whether latency or error rate starts increasing before CPU becomes saturated.
+
+Since the projected traffic growth is 4x, I would initially assume the service may eventually need close to 4x the current compute capacity unless optimization work reduces the per-request cost. If the current workload is running at 60% average CPU utilization, a simple linear estimate would push utilization far beyond safe operating levels under 4x traffic growth, so additional replicas and cluster capacity would clearly be required.
+
+I would normally avoid running production services near maximum utilization for extended periods. For a service like this, I would probably target keeping average CPU utilization closer to 50-60% during normal operation to preserve headroom for traffic spikes, deployment rollouts, node failures, and uneven traffic distribution.
+
+I would also review historical traffic patterns to understand:
+- peak versus average traffic
+- daily or weekly traffic cycles
+- burst behavior
+- deployment-time traffic impact
+
+Based on those patterns, I would adjust the HPA thresholds and estimate the number of replicas required for both normal peak traffic and unexpected spikes.
+
+I would trigger a scaling review if I started seeing trends such as:
+- sustained CPU utilization above 70-80%
+- increasing request latency
+- HPA frequently scaling near maximum replicas
+- node-level resource pressure
+- rising error rates during peak traffic
+
+I would also periodically load test the service to validate the assumptions and make sure the scaling behavior still matched the real traffic patterns as usage continued to grow.
