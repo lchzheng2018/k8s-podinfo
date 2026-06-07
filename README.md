@@ -713,13 +713,13 @@ Failure detection needs to happen at multiple levels:
 - pod health
 - service metrics
 - regional ingress/load balancer health
-- end-to-end synthetic checks from outside the cluster
+- external end-to-end health checks (e.g. send real HTTP requests to the service)
 
 A region should not be considered healthy just because Kubernetes pods are running. I would want alerts on:
 - regional traffic drop
 - elevated 5xx rate
 - high latency
-- failed synthetic probes
+- failed user-facing health checks
 - inability to scrape metrics from one region
 
 #### What would you do differently compared to a single-region setup, and what trade-offs would you accept?
