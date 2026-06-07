@@ -1,3 +1,18 @@
+# Kubernetes Podinfo Deployment
+
+## Overview
+
+This repository contains a Kubernetes deployment setup for `podinfo` using both raw Kubernetes manifests and a reusable Helm chart. It also includes a basic CI/CD pipeline implemented with GitHub Actions and an observability stack based on Prometheus and Grafana.
+
+The goal of this project was not only to deploy the application, but also to demonstrate operational considerations such as:
+- configuration management
+- deployment validation
+- monitoring and alerting
+- SLO/error budget concepts
+- deployment automation
+
+---
+
 ## Repository Structure
 
 ```text
@@ -34,3 +49,262 @@
 │
 └── README.md
 ```
+
+---
+
+## Architecture Overview
+
+The deployment consists of:
+- Kubernetes Deployment for the podinfo application
+- ClusterIP Service for internal traffic routing
+- ConfigMap-based application configuration
+- Horizontal Pod Autoscaler (HPA)
+- Helm chart packaging for reusable deployment
+- GitHub Actions CI/CD workflows
+- Prometheus and Grafana monitoring stack
+
+The application exposes:
+- `/healthz` for liveness/readiness probes
+- `/metrics` for Prometheus scraping
+
+The observability stack uses the Prometheus Operator through the `kube-prometheus-stack` Helm chart.
+
+---
+
+## Kubernetes Manifests
+
+The `manifests/` directory contains raw Kubernetes manifests for deploying podinfo without Helm.
+
+Files:
+- `podinfo-basic.yaml`
+- `podinfo-with-config.yaml`
+
+Resources included:
+- Namespace
+- Deployment
+- Service
+- ConfigMap
+- HorizontalPodAutoscaler
+
+The deployment uses:
+- readiness and liveness probes
+- CPU/memory requests and limits
+- ConfigMap-driven UI configuration
+- autoscaling based on CPU utilization
+
+---
+
+## Helm Chart Design
+
+The reusable Helm chart is located under:
+
+```text
+charts/podinfo/
+```
+
+The chart parameterizes:
+- replica count
+- container image
+- service configuration
+- resource requests and limits
+- HPA settings
+- UI color configuration
+
+Environment-specific overrides can be provided through separate values files such as:
+
+```text
+values-prod.yaml
+```
+
+The goal was to keep the chart relatively small while still demonstrating reusable deployment configuration.
+
+---
+
+## CI/CD Pipeline
+
+GitHub Actions workflows are located under:
+
+```text
+.github/workflows/
+```
+
+The pipeline performs:
+- `helm lint`
+- `helm template`
+- simulated staging deployment
+- manual approval before production deployment
+- rollback handling for failed production deployment
+
+### Helm Validation
+
+Every push triggers:
+
+```bash
+helm lint charts/podinfo
+
+helm template podinfo charts/podinfo
+```
+
+to validate both the chart structure and rendered manifests.
+
+### Staging Deployment
+
+The staging workflow uses a temporary `kind` cluster created during the GitHub Actions run. This allows the workflow to simulate:
+
+```bash
+helm upgrade --install
+```
+
+without requiring a long-running Kubernetes cluster.
+
+### Production Deployment
+
+Production deployment uses GitHub Environments with required reviewer approval configured in the repository settings.
+
+Rollback handling is implemented with:
+
+```bash
+helm rollback podinfo
+```
+
+In a real production setup, secure kubeconfig handling and cluster credentials would be required.
+
+---
+
+## Observability Stack
+
+Prometheus and Grafana are deployed using the official community Helm chart:
+
+```bash
+helm upgrade --install monitoring prometheus-community/kube-prometheus-stack
+```
+
+The observability configuration is stored under:
+
+```text
+observability/
+```
+
+Included resources:
+- ServiceMonitor
+- PrometheusRule
+- Grafana dashboard
+- Prometheus values override
+
+### ServiceMonitor
+
+A `ServiceMonitor` resource is used to allow Prometheus to scrape the podinfo metrics endpoint.
+
+Metrics are scraped every 15 seconds from:
+
+```text
+/metrics
+```
+
+### Grafana Dashboard
+
+The Grafana dashboard visualizes RED metrics:
+- request rate
+- error rate
+- latency
+
+### Alerting
+
+Prometheus alert rules were added for:
+- service unavailability
+- high latency
+- excessive error budget burn
+
+---
+
+## SLO / SLI / Error Budget
+
+The following SLOs were defined for the service:
+
+- 99.9% availability
+- p99 latency below 200ms
+
+Example SLI queries:
+
+Availability:
+
+```promql
+up{job="podinfo"}
+```
+
+Error rate:
+
+```promql
+rate(http_requests_total{status=~"5.."}[5m])
+```
+
+Latency:
+
+```promql
+histogram_quantile(
+  0.99,
+  sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+)
+```
+
+A 99.9% availability SLO allows a 0.1% error budget.
+
+Burn-rate alerts were added to detect excessive error budget consumption over short time windows.
+
+---
+
+## Deployment Instructions
+
+### Deploy podinfo
+
+```bash
+helm upgrade --install podinfo charts/podinfo \
+  --namespace podinfo \
+  --create-namespace
+```
+
+### Install Prometheus and Grafana
+
+```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+
+helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --create-namespace \
+  -f observability/prometheus-values.yaml
+```
+
+### Apply Monitoring Resources
+
+```bash
+kubectl apply -f observability/servicemonitor.yaml
+
+kubectl apply -f observability/prometheusrule.yaml
+```
+
+---
+
+## Design Decisions / Tradeoffs
+
+A few parts of the implementation were intentionally simplified for the assignment.
+
+- The staging deployment uses a temporary `kind` cluster created during the GitHub Actions workflow instead of a persistent shared cluster.
+- The production deployment workflow includes approval and rollback logic, but does not connect to a real production Kubernetes cluster.
+- Alert thresholds and SLO windows are simplified examples intended to demonstrate monitoring concepts rather than production tuning.
+- The Grafana dashboard focuses on RED metrics only and does not include infrastructure-level monitoring.
+- The Helm chart keeps a relatively small set of configurable values to keep the example easier to review.
+
+The goal was to keep the implementation reasonably small while still covering deployment, CI/CD, observability, and operational concepts.
+
+---
+
+## Limitations / Future Improvements
+
+Given more time, a few areas could be expanded further:
+
+- Separate Helm values files for additional environments beyond production.
+- More realistic deployment validation tests in the CI pipeline.
+- Alertmanager integration for notifications instead of local alert rules only.
+- Persistent Grafana dashboards and storage configuration.
+- Additional application metrics and dashboards beyond the RED model.
+- More advanced SLO burn-rate windows and multi-window alerting strategies.
