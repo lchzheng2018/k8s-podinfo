@@ -259,47 +259,174 @@ In a real production setup, secure kubeconfig handling and cluster credentials w
 
 ## Observability Stack
 
-Prometheus and Grafana are deployed using the official community Helm chart:
-
-```bash
-helm upgrade --install monitoring prometheus-community/kube-prometheus-stack
-```
-
-The observability configuration is stored under:
+The observability resources are stored under:
 
 ```text
 observability/
 ```
 
-Included resources:
-- ServiceMonitor
-- PrometheusRule
-- Grafana dashboard
-- Prometheus values override
+Prometheus and Grafana are installed through the community `kube-prometheus-stack` Helm chart.
+
+### Prometheus and Grafana Install
+
+Related file:
+
+```text
+observability/prometheus-values.yaml
+```
+
+Install command:
+
+```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+
+helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --create-namespace \
+  -f observability/prometheus-values.yaml
+```
+
+The values file allows Prometheus to discover custom `ServiceMonitor` and `PrometheusRule` resources.
 
 ### ServiceMonitor
 
-A `ServiceMonitor` resource is used to allow Prometheus to scrape the podinfo metrics endpoint.
+Related file:
 
-Metrics are scraped every 15 seconds from:
+```text
+observability/servicemonitor.yaml
+```
+
+The `ServiceMonitor` tells Prometheus how to scrape podinfo metrics.
+
+It selects the podinfo Service in the `podinfo` namespace using the Service labels:
+
+```yaml
+app.kubernetes.io/name: podinfo
+app.kubernetes.io/instance: podinfo
+```
+
+It then scrapes the Service port named:
+
+```text
+http
+```
+
+at:
 
 ```text
 /metrics
 ```
 
+This means the podinfo Service must expose a named port:
+
+```yaml
+ports:
+  - name: http
+    port: 80
+    targetPort: 9898
+```
+
+Without the named port, Prometheus can find the `ServiceMonitor`, but it will not find any scrape targets.
+
+To verify Prometheus target discovery:
+
+```bash
+kubectl port-forward -n monitoring svc/monitoring-kube-prometheus-prometheus 9090:9090
+```
+
+Then open:
+
+```text
+http://localhost:9090/targets
+```
+
+The podinfo target should appear as up under the `podinfo` job.
+
 ### Grafana Dashboard
 
-The Grafana dashboard visualizes RED metrics:
+Related file:
+
+```text
+observability/grafana-dashboard.json
+```
+
+The dashboard contains three RED metric panels:
 - request rate
 - error rate
-- latency
+- p99 latency
 
-### Alerting
+To access Grafana:
 
-Prometheus alert rules were added for:
-- service unavailability
-- high latency
-- excessive error budget burn
+```bash
+kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
+```
+
+Then open:
+
+```text
+http://localhost:3000
+```
+
+The default user is:
+
+```text
+admin
+```
+
+The password can be retrieved with:
+
+```bash
+kubectl --namespace monitoring get secrets monitoring-grafana \
+  -o jsonpath="{.data.admin-password}" | base64 -d ; echo
+```
+
+Import the dashboard from:
+
+```text
+observability/grafana-dashboard.json
+```
+
+The dashboard is intentionally small and focused on the RED metrics required for this assignment. In a production setup, I would extend it with additional panels such as pod restarts, CPU/memory usage, HPA behavior, and deployment health.
+
+### Prometheus Alerts
+
+Related file:
+
+```text
+observability/prometheusrule.yaml
+```
+
+The alert file defines alerts for availability, latency, and error-budget burn.
+
+#### PodinfoUnavailable
+
+Purpose:
+
+```text
+Alert if Prometheus cannot scrape podinfo for more than 2 minutes.
+```
+
+This catches cases where the service is down, the pods are unavailable, or the metrics endpoint cannot be reached.
+
+#### PodinfoHighLatency
+
+Purpose:
+
+```text
+Alert if p99 latency is above 200ms for more than 5 minutes.
+```
+
+The 200ms threshold matches the latency SLO used in this assignment. The 5-minute duration avoids alerting on very short spikes.
+
+#### PodinfoHighErrorBudgetBurn
+
+Purpose:
+
+```text
+Alert if 5xx errors are consuming the availability error budget too quickly.
+```
+
+For a 99.9% availability SLO, the allowed error budget is 0.1%. The burn-rate alert uses a higher short-window threshold to catch fast budget consumption without alerting on every small error.
 
 ---
 
